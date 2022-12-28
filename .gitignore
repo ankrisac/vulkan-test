@@ -1,0 +1,13 @@
+*
+
+!.gitignore
+!README.md
+!LICENSE
+
+!meson.build
+
+!src
+!src/*
+
+!subprojects
+!subprojects/glfw.wrap
