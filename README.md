@@ -2,7 +2,7 @@
 Experiments in Vulkan
 
 
-## Build instructions
+## Build Instructions
 
 Requirements: 
 - Any C++20 compliant compiler
