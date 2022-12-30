@@ -1,10 +1,13 @@
 #include <iostream>
-#include <sstream>
+#include <string>
 
 #include <GLFW/glfw3.h>
 
 #include "types.hpp"
 #include "instance.hpp"
+
+
+#include "flatset.hpp"
 
 void vulkan_info() {
   u32 vk_version = 0;
@@ -13,7 +16,6 @@ void vulkan_info() {
   std::cout 
     << "Vulkan: " << Version::from_vulkan(vk_version) << std::endl;
 }
-
 
 bool vulkan_test() {
   if(!glfwInit()) {
@@ -28,7 +30,9 @@ bool vulkan_test() {
   vulkan_info();
 
   try {
-    Instance* instance = new Instance();
+    Instance* instance = new Instance({ 
+
+    });
 
     while(!glfwWindowShouldClose(window)) {
       glfwPollEvents();
@@ -46,6 +50,5 @@ bool vulkan_test() {
 
 int main() {
   vulkan_test();
-
   return EXIT_SUCCESS;
 }

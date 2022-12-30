@@ -4,16 +4,30 @@
 #include <algorithm> 
 
 // Set implemented over a contiguous sorted array
-
 template<typename T>
 class FlatSet {
   std::vector<T> m_data;
+
+  void sort() {
+    std::sort(m_data.begin(), m_data.end());
+  }
+
+  void remove_duplicates() {
+    std::sort(m_data.begin(), m_data.end());
+    m_data.erase(
+      std::unique(m_data.begin(), m_data.end()),
+      m_data.end()
+    );
+  }
 public:
   using const_iterator = std::vector<T>::const_iterator;
 
-  FlatSet(std::initializer_list<T> list) {
-    m_data = list;
-    std::sort(m_data.begin(), m_data.end());
+  FlatSet() {}
+  FlatSet(std::vector<T>&& vector): m_data(vector) {
+    remove_duplicates();
+  }
+  FlatSet(std::initializer_list<T> list): m_data(list) {
+    remove_duplicates();
   }  
 
   const_iterator begin() const { 
@@ -22,7 +36,7 @@ public:
   const_iterator end() const { 
     return m_data.end(); 
   } 
-
+  
   const T* data() const {
     return m_data.data();
   }  
@@ -44,10 +58,19 @@ public:
   void add(T&& value) { 
     if(!contains(value)) {
       m_data.push_back(value); 
-      std::sort(m_data.begin(), m_data.end());
+      sort();
     }
   }
   void add(const T& value) { 
     add(value); 
+  }
+
+  void append(const std::vector<T>& values) {
+    m_data.insert(m_data.end(), values.begin(), values.end());
+    remove_duplicates();
+  }
+  void append(std::initializer_list<T> values) {
+    m_data.insert(m_data.end(), values.begin(), values.end());
+    remove_duplicates();
   }
 };

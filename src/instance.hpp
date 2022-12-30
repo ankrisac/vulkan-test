@@ -1,12 +1,12 @@
 #pragma once
 #include "types.hpp"
+#include "flatset.hpp"
 
 #include <iostream>
 #include <compare>
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
-
 
 
 struct Error : std::exception {
@@ -43,13 +43,16 @@ struct Version {
   friend std::ostream& operator<<(std::ostream& out, const Version& ver);
 };
 
-
-
 // Entry point for accessing the Vulkan API
 struct Instance {
+  struct Desc {
+    FlatSet<const char*> layers;
+    FlatSet<const char*> extensions;
+  };
+
   VkInstance handle;
 
-  Instance();
+  Instance(const Desc&);
   Instance(Instance&&) = delete;
   ~Instance();
 };

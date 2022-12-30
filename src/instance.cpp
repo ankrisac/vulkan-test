@@ -35,7 +35,19 @@ std::ostream& operator<<(std::ostream& out, const Version& ver) {
 
 
 
-Instance::Instance() {
+
+template<typename T, typename Enumerator, typename... Args>
+std::vector<T> enumerate(Enumerator fn, Args... args) {
+  u32 count = 0;
+  fn(args..., &count, nullptr);
+  
+  std::vector<T> vec { count };
+  fn(args..., &count, vec.data());
+
+  return vec;
+}
+
+Instance::Instance(const Desc& desc) {
   VkApplicationInfo app_info = {
     .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
 
@@ -51,11 +63,11 @@ Instance::Instance() {
     .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
     .pApplicationInfo = &app_info, 
 
-    .enabledLayerCount = 0,
-    .ppEnabledLayerNames = nullptr,
+    .enabledLayerCount = static_cast<u32>(desc.layers.size()),
+    .ppEnabledLayerNames = desc.layers.data(),
 
-    .enabledExtensionCount = 0,
-    .ppEnabledExtensionNames = nullptr
+    .enabledExtensionCount = static_cast<u32>(desc.extensions.size()),
+    .ppEnabledExtensionNames = desc.extensions.data()
   };
 
   vk_try(vkCreateInstance(&info, nullptr, &handle));
