@@ -59,14 +59,25 @@ public:
     return std::binary_search(m_data.begin(), m_data.end(), value);
   }
 
-  void add(T&& value) { 
+  FlatSet& add(T&& value) { 
     if(!contains(value)) {
       m_data.push_back(value); 
       sort();
     }
+    return *this;
   }
-  void add(const T& value) { 
-    add(value); 
+  FlatSet& add(const T& value) { 
+    if(!contains(value)) {
+      m_data.push_back(value); 
+      sort();
+    }
+    return *this;
+  }  
+  FlatSet& add_if(const T& value, bool toggle) { 
+    if(toggle) {
+      add(value);      
+    }
+    return *this;
   }
 
   void append(const std::vector<T>& values) {

@@ -14,6 +14,15 @@ project(
   ]
 )
 
+cc = meson.get_compiler('cpp')
+
+if cc.get_id() == 'msvc'
+  add_project_arguments(
+    ['/diagnostics:caret'],
+    language: 'cpp'
+  )
+endif
+
 if get_option('buildtype') == 'debug'
   add_project_arguments(['-DDEBUG'], language: 'cpp')
 endif 

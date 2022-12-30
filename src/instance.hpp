@@ -43,16 +43,25 @@ struct Version {
   friend std::ostream& operator<<(std::ostream& out, const Version& ver);
 };
 
+
+struct Instance;
+
+// Instance Builder
+struct InstanceDesc {
+  FlatSet<const char*> layers;
+  FlatSet<const char*> extensions;
+
+  // (Optional) Check if layers and extensions are supported
+  const InstanceDesc& check_support(std::ostream& log = std::cout) const;
+  Instance build() const; 
+};
+
 // Entry point for accessing the Vulkan API
 struct Instance {
-  struct Desc {
-    FlatSet<const char*> layers;
-    FlatSet<const char*> extensions;
-  };
-
   VkInstance handle;
 
-  Instance(const Desc&);
   Instance(Instance&&) = delete;
-  ~Instance();
+
+  Instance(VkInstance handle): handle(handle) {}
+  ~Instance() { vkDestroyInstance(handle, nullptr); }
 };

@@ -17,11 +17,21 @@ void vulkan_info() {
     << "Vulkan: " << Version::from_vulkan(vk_version) << std::endl;
 }
 
-std::vector<const char*> glfwExtensions() {
+FlatSet<const char*> glfwExtensions() {
   u32 count = 0;
   const char** ext = glfwGetRequiredInstanceExtensions(&count);
-  return { ext, ext + count };
+  return FlatSet<const char*> { 
+    { ext, ext + count } 
+  };
 }
+
+
+#ifdef DEBUG 
+const bool DEBUG_ENABLED = true;
+#else 
+const bool DEBUG_ENABLED = false;
+#endif 
+
 
 bool vulkan_test() {
   if(!glfwInit()) {
@@ -36,24 +46,18 @@ bool vulkan_test() {
   vulkan_info();
 
   try {
-    FlatSet<const char*> ext = {
-      glfwExtensions()
-    };
-    ext.add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-
-    Instance* instance = new Instance({
-      .layers = {
-        #ifdef DEBUG 
-          "VK_LAYER_KHRONOS_validation"
-        #endif 
-      },  
-      .extensions = ext
-    });
-
+    auto instance = InstanceDesc { 
+        .layers = FlatSet<const char*>{}
+          .add_if("VK_KHRONOS_validation", DEBUG_ENABLED),
+        .extensions = glfwExtensions()
+          .add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME) 
+      }
+      .check_support()
+      .build();
+  
     while(!glfwWindowShouldClose(window)) {
       glfwPollEvents();
     }
-    delete instance;
   }
   catch (Error& err) {
     std::cout << err.what() << std::endl;
@@ -64,7 +68,7 @@ bool vulkan_test() {
   return true;
 }
 
-int main() {
-  vulkan_test();
+int main() { 
+  //vulkan_test();
   return EXIT_SUCCESS;
 }

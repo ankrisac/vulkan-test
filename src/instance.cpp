@@ -45,67 +45,56 @@ std::vector<T> enumerate(Enumerator fn, Args... args) {
   return data;
 }
 
-void check_layer_support(const std::vector<const char*>& required) {
-  auto layers = enumerate<VkLayerProperties>(
-    vkEnumerateInstanceLayerProperties
-  );
-  
-  std::cout << "Checking Layer support" << std::endl;
-
-  bool any_missing = false;
-  for (auto name : required) {
-    bool found = false;
-    for (auto layer : layers) {
-      if (std::strcmp(name, layer.layerName) == 0) {
-        found = true;
-        break;
-      }
-    }
-    if(!found) any_missing = true;
-
-    std::cout 
-      << (found ? "[X]" : "[ ]")  
-      << " " << name << std::endl; 
-  }
-
-  if(any_missing) throw std::runtime_error("Layers not supported");
-}
-
-void check_extension_support(
-  const char*                     layer_name, 
-  const std::vector<const char*>& required
+template<typename T, typename S, typename GetName>
+bool check_support(
+  std::ostream&         log,
+  const std::vector<T>& available, 
+  const std::vector<S>& required,
+  GetName               view
 ) {
-  auto extensions = enumerate<VkExtensionProperties>(
-    vkEnumerateInstanceExtensionProperties, nullptr
-  );
-
-  std::cout << "Checking Extension Support" << std::endl;
-
   bool any_missing = false;
+
   for (auto name : required) {
     bool found = false;
-    for (auto ext : extensions) {
-      if (std::strcmp(name, ext.extensionName) == 0) {
+
+    for(auto avail : available) {
+      if(std::strcmp(name, view(avail)) == 0) {
         found = true;
         break;
-      }
+      }   
     }
+
     if(!found) any_missing = true;
 
-    std::cout 
+    std::cout
       << (found ? "[X]" : "[ ]")  
       << " " << name << std::endl; 
   }
-
-  if(any_missing) throw std::runtime_error("Extensions not supported");
+  return any_missing;
 }
 
+const InstanceDesc& InstanceDesc::check_support(std::ostream& log) const {
+  using Layer = VkLayerProperties;
+  std::cout << "Checking Layer support" << std::endl;
+  ::check_support(
+    log,
+    enumerate<Layer>(vkEnumerateInstanceLayerProperties),
+    layers.vec(),
+    [](Layer layer) { return layer.layerName; } 
+  );
 
+  using Extension = VkExtensionProperties;
+  std::cout << "Checking Extension support" << std::endl;
+  ::check_support(
+    log,
+    enumerate<Extension>(vkEnumerateInstanceExtensionProperties, nullptr),
+    extensions.vec(),
+    [](Extension ext) { return ext.extensionName; }
+  );
 
-Instance::Instance(const Desc& desc) {
-  check_layer_support(desc.layers.vec());
-  check_extension_support(nullptr, desc.extensions.vec());
-
+  return *this;
+}
+Instance InstanceDesc::build() const {
   VkApplicationInfo app_info = {
     .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
     .pApplicationName = "VulkanTest",
@@ -120,16 +109,14 @@ Instance::Instance(const Desc& desc) {
     .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
     .pApplicationInfo = &app_info, 
 
-    .enabledLayerCount = static_cast<u32>(desc.layers.size()),
-    .ppEnabledLayerNames = desc.layers.data(),
+    .enabledLayerCount = static_cast<u32>(layers.size()),
+    .ppEnabledLayerNames = layers.data(),
 
-    .enabledExtensionCount = static_cast<u32>(desc.extensions.size()),
-    .ppEnabledExtensionNames = desc.extensions.data()
+    .enabledExtensionCount = static_cast<u32>(extensions.size()),
+    .ppEnabledExtensionNames = extensions.data()
   };
 
+  VkInstance handle;
   vk_try(vkCreateInstance(&info, nullptr, &handle));
-}
-
-Instance::~Instance() {
-  vkDestroyInstance(handle, nullptr);
+  return Instance { handle };
 }
