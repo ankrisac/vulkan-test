@@ -37,6 +37,10 @@ public:
     return m_data.end(); 
   } 
   
+  const std::vector<T>& vec() const {
+    return m_data;
+  }
+
   const T* data() const {
     return m_data.data();
   }  

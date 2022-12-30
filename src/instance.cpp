@@ -35,22 +35,79 @@ std::ostream& operator<<(std::ostream& out, const Version& ver) {
 
 
 
-
 template<typename T, typename Enumerator, typename... Args>
 std::vector<T> enumerate(Enumerator fn, Args... args) {
   u32 count = 0;
   fn(args..., &count, nullptr);
-  
-  std::vector<T> vec { count };
-  fn(args..., &count, vec.data());
 
-  return vec;
+  std::vector<T> data { count };
+  fn(args..., &count, data.data());
+  return data;
 }
 
+void check_layer_support(const std::vector<const char*>& required) {
+  auto layers = enumerate<VkLayerProperties>(
+    vkEnumerateInstanceLayerProperties
+  );
+  
+  std::cout << "Checking Layer support" << std::endl;
+
+  bool any_missing = false;
+  for (auto name : required) {
+    bool found = false;
+    for (auto layer : layers) {
+      if (std::strcmp(name, layer.layerName) == 0) {
+        found = true;
+        break;
+      }
+    }
+    if(!found) any_missing = true;
+
+    std::cout 
+      << (found ? "[X]" : "[ ]")  
+      << " " << name << std::endl; 
+  }
+
+  if(any_missing) throw std::runtime_error("Layers not supported");
+}
+
+void check_extension_support(
+  const char*                     layer_name, 
+  const std::vector<const char*>& required
+) {
+  auto extensions = enumerate<VkExtensionProperties>(
+    vkEnumerateInstanceExtensionProperties, nullptr
+  );
+
+  std::cout << "Checking Extension Support" << std::endl;
+
+  bool any_missing = false;
+  for (auto name : required) {
+    bool found = false;
+    for (auto ext : extensions) {
+      if (std::strcmp(name, ext.extensionName) == 0) {
+        found = true;
+        break;
+      }
+    }
+    if(!found) any_missing = true;
+
+    std::cout 
+      << (found ? "[X]" : "[ ]")  
+      << " " << name << std::endl; 
+  }
+
+  if(any_missing) throw std::runtime_error("Extensions not supported");
+}
+
+
+
 Instance::Instance(const Desc& desc) {
+  check_layer_support(desc.layers.vec());
+  check_extension_support(nullptr, desc.extensions.vec());
+
   VkApplicationInfo app_info = {
     .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-
     .pApplicationName = "VulkanTest",
     .applicationVersion = VK_MAKE_API_VERSION(0, 0, 0, 0),
 

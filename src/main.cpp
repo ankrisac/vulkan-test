@@ -17,6 +17,12 @@ void vulkan_info() {
     << "Vulkan: " << Version::from_vulkan(vk_version) << std::endl;
 }
 
+std::vector<const char*> glfwExtensions() {
+  u32 count = 0;
+  const char** ext = glfwGetRequiredInstanceExtensions(&count);
+  return { ext, ext + count };
+}
+
 bool vulkan_test() {
   if(!glfwInit()) {
     std::cerr << "GLFW init failed" << std::endl;
@@ -30,8 +36,18 @@ bool vulkan_test() {
   vulkan_info();
 
   try {
-    Instance* instance = new Instance({ 
+    FlatSet<const char*> ext = {
+      glfwExtensions()
+    };
+    ext.add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
+    Instance* instance = new Instance({
+      .layers = {
+        #ifdef DEBUG 
+          "VK_LAYER_KHRONOS_validation"
+        #endif 
+      },  
+      .extensions = ext
     });
 
     while(!glfwWindowShouldClose(window)) {
