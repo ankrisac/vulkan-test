@@ -4,8 +4,6 @@
 #include "types.hpp"
 #include <iostream>
 
-void vk_try(const VkResult res);
-
 struct Error : std::exception {
   VkResult res;
 
@@ -43,3 +41,20 @@ struct Version {
   friend bool operator==(const Version&, const Version&) = default;
   friend std::ostream& operator<<(std::ostream& out, const Version& ver);
 };
+
+
+template<typename T, typename Enumerator, typename... Args>
+std::vector<T> enumerate(Enumerator fn, Args... args) {
+  u32 count = 0;
+  std::vector<T> data;
+
+  VkResult err;
+  do {
+    Error::check(fn(args..., &count, nullptr));
+    data.resize(count);
+    err = fn(args..., &count, data.data());
+  } while(err == VK_INCOMPLETE);
+
+  Error::check(err);
+  return data;
+}

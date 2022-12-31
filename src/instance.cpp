@@ -10,18 +10,6 @@ Instance::Builder& Instance::Builder::enable_validation(bool toggle) {
   return *this;
 }
 
-
-
-template<typename T, typename Enumerator, typename... Args>
-std::vector<T> enumerate(Enumerator fn, Args... args) {
-  u32 count = 0;
-  fn(args..., &count, nullptr);
-
-  std::vector<T> data { count };
-  fn(args..., &count, data.data());
-  return data;
-}
-
 template<typename T, typename S, typename GetName>
 bool any_missing(
   std::ostream&         log,
@@ -41,18 +29,18 @@ bool any_missing(
       }   
     }
 
-    if(!found) missing = true;
+    if(!found) {
+      log << name << " not supported!" << std::endl; 
+      
+      missing = true;
+    }
 
-    std::cout
-      << (found ? "[X]" : "[ ]")  
-      << " " << name << std::endl; 
   }
   return missing;
 }
 
 const Instance::Builder& Instance::Builder::check_support(std::ostream& log) const {
   using Layer = VkLayerProperties;
-  std::cout << "Checking Layer support" << std::endl;
   any_missing(
     log,
     enumerate<Layer>(vkEnumerateInstanceLayerProperties),
@@ -61,7 +49,6 @@ const Instance::Builder& Instance::Builder::check_support(std::ostream& log) con
   );
 
   using Extension = VkExtensionProperties;
-  std::cout << "Checking Extension support" << std::endl;
   any_missing(
     log,
     enumerate<Extension>(vkEnumerateInstanceExtensionProperties, nullptr),
@@ -84,7 +71,7 @@ VkDebugUtilsMessengerCreateInfoEXT make_debug_info() {
     // Todo : Print out label, and other info.
 
     std::cout 
-      << "\033[31mValidation\033[0m" 
+      << "\033[31mValidation\033[0m: " 
       << pCallbackData->pMessage
       << std::endl;
     return VK_FALSE;

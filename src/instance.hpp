@@ -17,7 +17,7 @@ struct Instance {
     Builder& enable_validation(bool toggle = true);
 
     // (Optional) Check if layers and extensions are supported
-    const Builder& check_support(std::ostream& log = std::cout) const;
+    const Builder& check_support(std::ostream& log = std::cerr) const;
     Instance build() const; 
   };
 
