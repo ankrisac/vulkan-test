@@ -31,6 +31,8 @@ executable(
   'main',
   sources: [
     'src/main.cpp',
+
+    'src/common.cpp',
     'src/instance.cpp'
   ],
   dependencies: [

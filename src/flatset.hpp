@@ -11,7 +11,6 @@ class FlatSet {
   void sort() {
     std::sort(m_data.begin(), m_data.end());
   }
-
   void remove_duplicates() {
     std::sort(m_data.begin(), m_data.end());
     m_data.erase(

@@ -1,36 +1,13 @@
 #include "instance.hpp"
 
+Instance::Builder& Instance::Builder::enable_validation(bool toggle) {
+  validation_enabled = toggle;
 
-void vk_try(const VkResult res) {
-  if (res != VK_SUCCESS) {
-    std::cout << "Vulkan Error : " << res << std::endl;
+  if(toggle) {
+    layers.add("VK_LAYER_KHRONOS_validation");
+    extensions.add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
   }
-}
-
-
-std::strong_ordering operator<=>(const Version& lhs, const Version& rhs) {
-  // variant needs to be compared first, so we can't use the default impl
-
-  auto cmps = { 
-    lhs.variant <=> rhs.variant,
-    lhs.major   <=> rhs.major,
-    lhs.minor   <=> rhs.minor,
-    lhs.patch   <=> rhs.patch 
-  };
-
-  for (auto cmp : cmps) {
-    if(cmp != 0) return cmp;
-  }
-  return std::strong_ordering::equal;
-};
-
-std::ostream& operator<<(std::ostream& out, const Version& ver) {
-  out << ver.major << "." << ver.minor << "." << ver.patch;
-
-  if(ver.variant != 0) {
-    out << " variant(" << ver.variant << ")";
-  }
-  return out;
+  return *this;
 }
 
 
@@ -46,13 +23,13 @@ std::vector<T> enumerate(Enumerator fn, Args... args) {
 }
 
 template<typename T, typename S, typename GetName>
-bool check_support(
+bool any_missing(
   std::ostream&         log,
   const std::vector<T>& available, 
   const std::vector<S>& required,
   GetName               view
 ) {
-  bool any_missing = false;
+  bool missing = false;
 
   for (auto name : required) {
     bool found = false;
@@ -64,19 +41,19 @@ bool check_support(
       }   
     }
 
-    if(!found) any_missing = true;
+    if(!found) missing = true;
 
     std::cout
       << (found ? "[X]" : "[ ]")  
       << " " << name << std::endl; 
   }
-  return any_missing;
+  return missing;
 }
 
-const InstanceDesc& InstanceDesc::check_support(std::ostream& log) const {
+const Instance::Builder& Instance::Builder::check_support(std::ostream& log) const {
   using Layer = VkLayerProperties;
   std::cout << "Checking Layer support" << std::endl;
-  ::check_support(
+  any_missing(
     log,
     enumerate<Layer>(vkEnumerateInstanceLayerProperties),
     layers.vec(),
@@ -85,7 +62,7 @@ const InstanceDesc& InstanceDesc::check_support(std::ostream& log) const {
 
   using Extension = VkExtensionProperties;
   std::cout << "Checking Extension support" << std::endl;
-  ::check_support(
+  any_missing(
     log,
     enumerate<Extension>(vkEnumerateInstanceExtensionProperties, nullptr),
     extensions.vec(),
@@ -94,7 +71,39 @@ const InstanceDesc& InstanceDesc::check_support(std::ostream& log) const {
 
   return *this;
 }
-Instance InstanceDesc::build() const {
+
+
+
+VkDebugUtilsMessengerCreateInfoEXT make_debug_info() {
+  auto callback = [](
+    VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity, 
+    VkDebugUtilsMessageTypeFlagsEXT             messageTypes, 
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, 
+    void*                                       pUserData
+  ) {
+    // Todo : Print out label, and other info.
+
+    std::cout 
+      << "\033[31mValidation\033[0m" 
+      << pCallbackData->pMessage
+      << std::endl;
+    return VK_FALSE;
+  };
+
+  return VkDebugUtilsMessengerCreateInfoEXT {
+    .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+    .messageSeverity 
+      = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+    .messageType    
+      = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT,
+    .pfnUserCallback = +callback
+  };
+}
+
+Instance Instance::Builder::build() const {
   VkApplicationInfo app_info = {
     .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
     .pApplicationName = "VulkanTest",
@@ -116,7 +125,41 @@ Instance InstanceDesc::build() const {
     .ppEnabledExtensionNames = extensions.data()
   };
 
+  VkDebugUtilsMessengerCreateInfoEXT debug_info = make_debug_info();
+  if (validation_enabled) {
+    info.pNext = &debug_info;
+  }
+
   VkInstance handle;
-  vk_try(vkCreateInstance(&info, nullptr, &handle));
-  return Instance { handle };
+  Error::check(vkCreateInstance(&info, nullptr, &handle));
+  Instance out { handle };
+
+  if(validation_enabled) {
+    auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+      vkGetInstanceProcAddr(handle, "vkCreateDebugUtilsMessengerEXT")
+    );
+
+    VkDebugUtilsMessengerEXT debug_handle;
+    create(handle, &debug_info, nullptr, &debug_handle);
+    out.messenger = debug_handle;
+  }
+  return out;
 }
+
+Instance::~Instance() {
+  if (messenger.has_value()) {
+    auto destroy = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+      vkGetInstanceProcAddr(handle, "vkDestroyDebugUtilsMessengerEXT")
+    );
+    destroy(handle, messenger.value(), nullptr);
+  }
+  vkDestroyInstance(handle, nullptr);
+}
+
+Instance::Instance(Instance&& other)
+: handle(other.handle), messenger(other.messenger) 
+{
+  // Cannot use default impl, as we need to avoid calling the destructor
+  other.handle = VK_NULL_HANDLE;
+  other.messenger = {};
+};

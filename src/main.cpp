@@ -1,27 +1,25 @@
 #include <iostream>
 #include <string>
 
+#include "types.hpp"
+
 #include <GLFW/glfw3.h>
 
-#include "types.hpp"
 #include "instance.hpp"
-
-
 #include "flatset.hpp"
 
 void vulkan_info() {
   u32 vk_version = 0;
   vkEnumerateInstanceVersion(&vk_version);
 
-  std::cout 
-    << "Vulkan: " << Version::from_vulkan(vk_version) << std::endl;
+  std::cout << "Vulkan: " << Version::from_vulkan(vk_version) << std::endl;
 }
 
 FlatSet<const char*> glfwExtensions() {
   u32 count = 0;
   const char** ext = glfwGetRequiredInstanceExtensions(&count);
   return FlatSet<const char*> { 
-    { ext, ext + count } 
+    { ext, ext + count }
   };
 }
 
@@ -46,14 +44,12 @@ bool vulkan_test() {
   vulkan_info();
 
   try {
-    auto instance = InstanceDesc { 
-        .layers = FlatSet<const char*>{}
-          .add_if("VK_KHRONOS_validation", DEBUG_ENABLED),
-        .extensions = glfwExtensions()
-          .add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME) 
-      }
-      .check_support()
-      .build();
+    auto vulkan = Instance::Builder {
+      .extensions = glfwExtensions()
+    }
+    .enable_validation(DEBUG_ENABLED)
+    .check_support()
+    .build();
   
     while(!glfwWindowShouldClose(window)) {
       glfwPollEvents();
@@ -69,6 +65,6 @@ bool vulkan_test() {
 }
 
 int main() { 
-  //vulkan_test();
+  vulkan_test();
   return EXIT_SUCCESS;
 }
