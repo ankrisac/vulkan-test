@@ -1,6 +1,8 @@
-#include "instance.hpp"
+#include "common.hpp"
 
-Instance::Builder& Instance::Builder::enable_validation(bool toggle) {
+using Self = Instance;
+
+Self::Builder& Self::Builder::enable_validation(bool toggle) {
   validation_enabled = toggle;
 
   if(toggle) {
@@ -39,7 +41,7 @@ bool any_missing(
   return missing;
 }
 
-const Instance::Builder& Instance::Builder::check_support(std::ostream& log) const {
+const Self::Builder& Self::Builder::check_support(std::ostream& log) const {
   using Layer = VkLayerProperties;
   any_missing(
     log,
@@ -90,7 +92,7 @@ VkDebugUtilsMessengerCreateInfoEXT make_debug_info() {
   };
 }
 
-Instance Instance::Builder::build() const {
+Self Self::Builder::build() const {
   VkApplicationInfo app_info = {
     .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
     .pApplicationName = "VulkanTest",
@@ -119,7 +121,7 @@ Instance Instance::Builder::build() const {
 
   VkInstance handle;
   Error::check(vkCreateInstance(&info, nullptr, &handle));
-  Instance out { handle };
+  Self out { handle };
 
   if(validation_enabled) {
     auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
@@ -133,7 +135,7 @@ Instance Instance::Builder::build() const {
   return out;
 }
 
-Instance::~Instance() {
+Self::~Instance() {
   if (messenger.has_value()) {
     auto destroy = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
       vkGetInstanceProcAddr(handle, "vkDestroyDebugUtilsMessengerEXT")
@@ -143,10 +145,26 @@ Instance::~Instance() {
   vkDestroyInstance(handle, nullptr);
 }
 
-Instance::Instance(Instance&& other)
+Self::Instance(Self&& other)
 : handle(other.handle), messenger(other.messenger) 
 {
   // Cannot use default impl, as we need to avoid calling the destructor
   other.handle = VK_NULL_HANDLE;
   other.messenger = {};
-};
+}
+
+
+std::vector<PhysicalDevice> Self::get_physical_devices() {
+  auto devices = enumerate<VkPhysicalDevice>(
+    vkEnumeratePhysicalDevices, handle
+  );
+
+  std::vector<PhysicalDevice> out { devices.size() };
+  for (size_t i = 0; i < devices.size(); i++) {
+    out[i] = PhysicalDevice {
+      .parent = this,
+      .handle = devices[i]
+    };
+  }
+  return out;
+}

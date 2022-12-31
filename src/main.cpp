@@ -2,11 +2,11 @@
 #include <string>
 
 #include "types.hpp"
+#include "common.hpp"
+#include "flatset.hpp"
 
 #include <GLFW/glfw3.h>
-
-#include "instance.hpp"
-#include "flatset.hpp"
+#include <GLFW/glfw3native.h>
 
 #ifdef DEBUG 
 const bool DEBUG_ENABLED = true;
@@ -40,6 +40,26 @@ bool vulkan_test() {
     .check_support()
     .build();
 
+    VkSurfaceKHR surface;
+
+    Error::check(glfwCreateWindowSurface(vulkan.handle, window, nullptr, &surface)); 
+
+    for (auto device : vulkan.get_physical_devices()) {
+      std::cout << "Device[" << device.properties().deviceName << "]" << std::endl;
+
+      for (auto family : device.get_queue_families()) {
+        std::cout << "- ";
+        if (family.can_present(surface) && family.has_graphics()) {
+          std::cout << "Good! ";      
+        }
+        std::cout << "Queue[" 
+                  << family.properties.queueCount 
+                  << " : "
+                  << string_VkQueueFlags(family.properties.queueFlags) 
+                  << "]" << std::endl;
+      }
+    }
+
     while(!glfwWindowShouldClose(window)) {
       glfwPollEvents();
     }
@@ -53,7 +73,7 @@ bool vulkan_test() {
   return true;
 }
 
-int main() { 
+int main() {
   vulkan_test();
   return EXIT_SUCCESS;
 }

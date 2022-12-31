@@ -33,7 +33,8 @@ executable(
     'src/main.cpp',
 
     'src/common.cpp',
-    'src/instance.cpp'
+    'src/instance.cpp',
+    'src/physical_device.cpp'
   ],
   dependencies: [
     dependency('vulkan'),
