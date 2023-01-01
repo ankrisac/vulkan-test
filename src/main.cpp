@@ -1,79 +1,117 @@
 #include <iostream>
 #include <string>
 
+#include <algorithm>
+
 #include "types.hpp"
+#include "nameset.hpp"
 #include "common.hpp"
-#include "flatset.hpp"
 
 #include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
 
-#ifdef DEBUG 
-const bool DEBUG_ENABLED = true;
-#else 
-const bool DEBUG_ENABLED = false;
-#endif 
-
-FlatSet<const char*> glfwExtensions() {
+NameSet glfw_extensions() {
   u32 count = 0;
   const char** ext = glfwGetRequiredInstanceExtensions(&count);
-  return FlatSet<const char*> { 
-    { ext, ext + count }
-  };
+  return { ext, ext + count };
 }
 
-bool vulkan_test() {
+VkInstance create_instance(bool validation_enabled) {
+  NameSet layers = {};
+  NameSet extensions = glfw_extensions();
+
+  if (validation_enabled) {
+    layers.add("VK_LAYER_KHRONOS_validation");
+    extensions.add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  }
+
+  layers.supported(Instance::layers());
+  extensions.supported(Instance::extensions());
+
+  VkApplicationInfo app_info {
+    .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+    .pApplicationName = "Hello Vulkan",
+    .applicationVersion = 1,
+    .pEngineName = "Vulkan-Test",
+    .engineVersion = 1,
+    .apiVersion = VK_API_VERSION_1_2
+  };
+  VkInstanceCreateInfo info {
+    .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, 
+    .pNext = &DebugLog::create_info,
+    .enabledLayerCount = layers.count(),
+    .ppEnabledLayerNames = layers.names(),
+    .enabledExtensionCount = extensions.count(),
+    .ppEnabledExtensionNames = extensions.names()
+  };
+
+  VkInstance handle;
+  Error::check(vkCreateInstance(&info, nullptr, &handle));
+  return handle;
+}
+
+struct VulkanState {
+  VkInstance instance;
+  Option<DebugLog> log;
+
+  VkDevice device;
+  VkQueue queue;
+
+  void init(bool validation_enabled) {
+    instance = { create_instance(validation_enabled) };
+
+    if(validation_enabled) {
+      log = DebugLog {instance};
+    }
+  }
+  void uninit(){
+    log.reset();
+    vkDestroyInstance(instance, nullptr);
+  }
+};
+
+int main() {
+#ifdef DEBUG 
+  const bool VALIDATION_ENABLED = true;
+#else 
+  const bool VALIDATION_ENABLED = false;
+#endif 
+
   if(!glfwInit()) {
-    std::cerr << "GLFW init failed" << std::endl;
-    return false;
+    std::cout << "GLFW init failed";
+    return EXIT_FAILURE;
+  }
+  glfwSetErrorCallback(
+    [](int err_code, const char* desc) {
+      std::cout 
+        << "GLFW [" << err_code << "] : " 
+        << desc << std::endl;
+    }
+  );
+
+  if(!glfwVulkanSupported()) {
+    std::cerr << "Vulkan not supported" << std::endl;
+  }
+  else {
+    std::cout 
+      << "Vulkan "
+      << Instance::version() << std::endl;
   }
 
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
   glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-  GLFWwindow* window = glfwCreateWindow(500, 500, "Hello GLFW!", NULL, NULL);
+  GLFWwindow* window = glfwCreateWindow(500, 500, "Hello Vulkan", nullptr, nullptr);
 
-  try {
-    auto vulkan = Instance::Builder {
-      .extensions = glfwExtensions()
-    }
-    .enable_validation(DEBUG_ENABLED)
-    .check_support()
-    .build();
+  VulkanState state;
+  state.init(VALIDATION_ENABLED);
 
-    VkSurfaceKHR surface;
-
-    Error::check(glfwCreateWindowSurface(vulkan.handle, window, nullptr, &surface)); 
-
-    for (auto device : vulkan.get_physical_devices()) {
-      std::cout << "Device[" << device.properties().deviceName << "]" << std::endl;
-
-      for (auto family : device.get_queue_families()) {
-        std::cout << "- ";
-        if (family.can_present(surface) && family.has_graphics()) {
-          std::cout << "Good! ";      
-        }
-        std::cout << "Queue[" 
-                  << family.properties.queueCount 
-                  << " : "
-                  << string_VkQueueFlags(family.properties.queueFlags) 
-                  << "]" << std::endl;
-      }
-    }
-
-    while(!glfwWindowShouldClose(window)) {
-      glfwPollEvents();
-    }
+  while(!glfwWindowShouldClose(window)) {
+    glfwPollEvents();
   }
-  catch (Error& err) {
-    std::cout << err.what() << std::endl;
-  }
+
+  state.uninit();
 
   glfwDestroyWindow(window);
   glfwTerminate();
-  return true;
-}
 
-int main() {
-  vulkan_test();
   return EXIT_SUCCESS;
 }

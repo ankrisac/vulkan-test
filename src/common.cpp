@@ -26,3 +26,44 @@ std::ostream& operator<<(std::ostream& out, const Version& ver) {
   }
   return out;
 }
+
+
+DebugLog::DebugLog(VkInstance parent): parent(parent) 
+{
+  auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+    vkGetInstanceProcAddr(parent, "vkCreateDebugUtilsMessengerEXT")
+  );
+  create(parent, &create_info, nullptr, &handle);
+}
+DebugLog::~DebugLog() 
+{
+  if(handle != nullptr) {  
+    auto destroy = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+      vkGetInstanceProcAddr(parent, "vkDestroyUtilsMessengerEXT")
+    );
+    destroy(parent, handle, nullptr);
+  }
+}
+DebugLog::DebugLog(DebugLog&& other) {
+  std::swap(parent, other.parent);
+  std::swap(handle, other.handle);  
+}
+
+namespace Instance {
+  Version version() {
+    u32 version;
+    vkEnumerateInstanceVersion(&version);
+    return Version::from_vulkan(version);
+  }
+
+  std::vector<VkLayerProperties> layers() {
+    return checked_enumerate<VkLayerProperties>(
+      vkEnumerateInstanceLayerProperties
+    );
+  }  
+  std::vector<VkExtensionProperties> extensions(const char* layer) {
+    return checked_enumerate<VkExtensionProperties>(
+      vkEnumerateInstanceExtensionProperties, nullptr 
+    );
+  }
+}

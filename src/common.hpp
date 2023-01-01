@@ -1,10 +1,8 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
-#include <GLFW/glfw3.h>
 
 #include "types.hpp"
-#include "flatset.hpp"
 
 #include <iostream>
 
@@ -18,10 +16,10 @@ struct Error : std::exception {
     return string_VkResult(res); 
   }
 
-  
   static void check(VkResult res) {
     if (res != VK_SUCCESS) {
-      std::cout << "Vulkan Error : " << res << std::endl;
+      std::cerr << "Vulkan Error : " << res << std::endl;
+      throw Error(res);
     }
   }
 };
@@ -52,7 +50,7 @@ struct Version {
 
 /// @tparam Enumerator (Args..., u32*, T*) -> VkResult
 template<typename T, typename Enumerator, typename... Args>
-std::vector<T> enumerate(Enumerator fn, Args... args) {
+std::vector<T> checked_enumerate(Enumerator fn, Args... args) {
   u32 count = 0;
   Error::check(fn(args..., &count, nullptr));
 
@@ -72,82 +70,47 @@ std::vector<T> unchecked_enumerate(Enumerator fn, Args... args) {
   return data;
 }
 
+struct DebugLog {
+  VkInstance parent = nullptr;
+  VkDebugUtilsMessengerEXT handle = nullptr;
 
-
-// Entry point for accessing the Vulkan API
-struct PhysicalDevice;
-struct Surface;
-
-struct Instance {
-  struct Builder {
-    FlatSet<const char*> layers;
-    FlatSet<const char*> extensions;
-
-    bool validation_enabled = false;
-    
-    Builder& enable_validation(bool toggle = true);
-
-    // (Optional) Check if layers and extensions are supported
-    const Builder& check_support(std::ostream& log = std::cerr) const;
-    Instance build() const; 
+  static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity, 
+    VkDebugUtilsMessageTypeFlagsEXT             messageTypes, 
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, 
+    void*                                       pUserData
+  ) {
+    std::cout 
+      << "\033[31mValidation\033[0m: "
+      << pCallbackData->pMessage
+      << std::endl;
+    return VK_FALSE;
+  }
+  constexpr static VkDebugUtilsMessengerCreateInfoEXT create_info = {
+    .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT, 
+    .messageSeverity 
+      = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT,
+    .messageType
+      = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+      | VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT,
+    .pfnUserCallback = &debug_callback
   };
 
-  VkInstance handle;
-  Option<VkDebugUtilsMessengerEXT> messenger;
+  DebugLog(VkInstance parent);
+  ~DebugLog();
 
-  // Ownership semantics : Move only, no copying
+  DebugLog(DebugLog&& other);
+  DebugLog& operator=(DebugLog&& other) = default;
 
-  Instance(VkInstance handle) : handle(handle) {}
-  ~Instance();
-
-  Instance(Instance&& other);
-  Instance& operator=(Instance&&) = default;
-
-  Instance(const Instance&) = delete;
-  Instance& operator=(const Instance&) = delete;
-
-
-
-  std::vector<PhysicalDevice> get_physical_devices();
+  DebugLog(const DebugLog&) = delete;
+  DebugLog& operator=(const DebugLog&) = delete;
 };
 
-
-struct QueueFamily;
-
-// Request using Instance::get_physical_devices()
-struct PhysicalDevice {
-  Instance* parent;
-  VkPhysicalDevice handle;
-
-  using Properties = VkPhysicalDeviceProperties;
-  using Features   = VkPhysicalDeviceFeatures;
-
-  Features features() const;
-  Properties properties() const;
-
-  std::vector<QueueFamily> get_queue_families();
-};
-
-// Request using PhysicalDevice::get_queue_families()
-
-struct QueueFamily {
-  using Index = u32;
-
-  PhysicalDevice* parent;
-  Index index;
-
-  VkQueueFamilyProperties properties;    
-
-  bool can_present(VkSurfaceKHR surface) {
-    VkBool32 supported = false;
-    vkGetPhysicalDeviceSurfaceSupportKHR(parent->handle, index, surface, &supported);
-    return supported;
-  }
-
-  bool has(VkQueueFlagBits flag) {
-    return properties.queueFlags & flag;  
-  }
-
-  bool has_graphics() { return has(VK_QUEUE_GRAPHICS_BIT); }
-  bool has_compute() { return has(VK_QUEUE_COMPUTE_BIT); }
-};
+namespace Instance {
+  Version version();
+  std::vector<VkLayerProperties> layers();
+  std::vector<VkExtensionProperties> extensions(const char* layer = nullptr);
+}
