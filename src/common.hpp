@@ -18,7 +18,7 @@ struct Error : std::exception {
 
   static void check(VkResult res) {
     if (res != VK_SUCCESS) {
-      std::cerr << "Vulkan Error : " << res << std::endl;
+      std::cerr << "Vulkan Error : " << string_VkResult(res) << std::endl;
       throw Error(res);
     }
   }
@@ -70,6 +70,15 @@ std::vector<T> unchecked_enumerate(Enumerator fn, Args... args) {
   return data;
 }
 
+template<typename U, typename T, typename Fn>
+std::vector<U> map(const std::vector<T>& in, Fn fn) {
+  std::vector<U> out(in.size());
+  for(size_t i = 0; i < in.size(); i++) {
+    out[i] = fn(in[i]);
+  }
+  return out;
+}
+
 struct DebugLog {
   VkInstance parent = nullptr;
   VkDebugUtilsMessengerEXT handle = nullptr;
@@ -109,8 +118,66 @@ struct DebugLog {
   DebugLog& operator=(const DebugLog&) = delete;
 };
 
-namespace Instance {
-  Version version();
-  std::vector<VkLayerProperties> layers();
-  std::vector<VkExtensionProperties> extensions(const char* layer = nullptr);
-}
+struct PhysicalDevice;
+struct QueueFamily;
+struct Device;
+
+struct Instance {
+  using Handle = VkInstance;
+  using CreateInfo = VkInstanceCreateInfo;
+
+  Handle handle;
+
+  void init(const CreateInfo& info) {
+    Error::check(vkCreateInstance(&info, nullptr, &handle));
+  }
+  void uninit() {
+    vkDestroyInstance(handle, nullptr);
+  }
+
+  static Version version();
+  static std::vector<VkLayerProperties> layers();
+  static std::vector<VkExtensionProperties> extensions(const char* layer = nullptr);
+
+  std::vector<PhysicalDevice> devices();
+};
+
+struct PhysicalDevice {
+  using Handle = VkPhysicalDevice;
+  Handle handle;
+
+  using Features = VkPhysicalDeviceFeatures;
+  using Properties = VkPhysicalDeviceProperties;
+
+  Features features();
+  Properties properties();
+  bool can_present(const QueueFamily& family, VkSurfaceKHR surface);
+
+  std::vector<VkExtensionProperties> extensions(const char* layer_name);
+  std::vector<QueueFamily> queue_families();
+
+  Device create_device(VkDeviceCreateInfo& info);
+};
+
+struct QueueFamily {
+  using Handle = VkQueueFamilyProperties;
+  using Index = u32;
+
+  Handle handle;
+  Index index;
+
+  bool has(VkQueueFlags flags) {
+    return handle.queueFlags & flags;
+  } 
+  bool has_graphics() {
+    return has(VK_QUEUE_GRAPHICS_BIT);
+  }
+  bool has_compute() {
+    return has(VK_QUEUE_COMPUTE_BIT);
+  }
+};
+
+struct Device {
+  using Handle = VkDevice;
+  Handle handle;
+};

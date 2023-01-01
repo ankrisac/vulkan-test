@@ -44,13 +44,9 @@ public:
     return m_data.data();
   }
 
-  template<typename Property>
-  bool supported(
-    std::vector<Property>                available, 
-    std::function<const char*(Property)> get_name
-  ) {
+  template<typename Property, typename Fn>
+  bool impl_supported(const std::vector<Property>& available, Fn get_name) {
     bool any_missing = false;
-
     for (auto name : m_data) {
       bool found = false;
 
@@ -70,16 +66,17 @@ public:
     return !any_missing;
   }
 
-  bool supported(std::vector<VkLayerProperties> available) {
+  bool supported(const std::vector<VkLayerProperties>& available) {
     std::cout << "Checking Layer Support" << std::endl;
-    return supported<VkLayerProperties>(available, 
+    bool any_missing = false;
+    return impl_supported<VkLayerProperties>(available, 
       [](auto layer) { return layer.layerName; }
     );
   }
   bool supported(const std::vector<VkExtensionProperties>& available) {
     std::cout << "Checking Extension Support" << std::endl;
-    return supported<VkExtensionProperties>(available, 
-      [](auto layer) { return layer.extensionName; }
+    return impl_supported<VkExtensionProperties>(available, 
+      [](auto extension) { return extension.extensionName; }
     );
   }
 };

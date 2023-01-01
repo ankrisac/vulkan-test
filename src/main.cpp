@@ -9,15 +9,17 @@
 
 #include <GLFW/glfw3.h>
 
-NameSet glfw_extensions() {
-  u32 count = 0;
-  const char** ext = glfwGetRequiredInstanceExtensions(&count);
-  return { ext, ext + count };
+namespace GLFW {
+  NameSet extensions() {
+    u32 count = 0;
+    const char** ext = glfwGetRequiredInstanceExtensions(&count);
+    return { ext, ext + count };
+  }
 }
 
-VkInstance create_instance(bool validation_enabled) {
+Instance create_instance(bool validation_enabled) {
   NameSet layers = {};
-  NameSet extensions = glfw_extensions();
+  NameSet extensions = GLFW::extensions();
 
   if (validation_enabled) {
     layers.add("VK_LAYER_KHRONOS_validation");
@@ -35,7 +37,7 @@ VkInstance create_instance(bool validation_enabled) {
     .engineVersion = 1,
     .apiVersion = VK_API_VERSION_1_2
   };
-  VkInstanceCreateInfo info {
+  Instance::CreateInfo info {
     .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, 
     .pNext = &DebugLog::create_info,
     .enabledLayerCount = layers.count(),
@@ -43,33 +45,91 @@ VkInstance create_instance(bool validation_enabled) {
     .enabledExtensionCount = extensions.count(),
     .ppEnabledExtensionNames = extensions.names()
   };
-
-  VkInstance handle;
-  Error::check(vkCreateInstance(&info, nullptr, &handle));
-  return handle;
+  Instance out;
+  out.init(info);
+  return out;
 }
 
-struct VulkanState {
-  VkInstance instance;
-  Option<DebugLog> log;
+struct Adapter {
+  PhysicalDevice physical_device;
+  QueueFamily family;
 
-  VkDevice device;
-  VkQueue queue;
+  void request_device(VkDevice& device, VkQueue& queue) {
+    f32 priority = 1.0f;
+    VkDeviceQueueCreateInfo queue_info {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+      .queueFamilyIndex = family.index,
+      .queueCount = 1,
+      .pQueuePriorities = &priority,
+    };
 
-  void init(bool validation_enabled) {
-    instance = { create_instance(validation_enabled) };
-
-    if(validation_enabled) {
-      log = DebugLog {instance};
-    }
-  }
-  void uninit(){
-    log.reset();
-    vkDestroyInstance(instance, nullptr);
+    VkDeviceCreateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+      .queueCreateInfoCount = 1,
+      .pQueueCreateInfos = &queue_info,
+    };
+    vkCreateDevice(physical_device.handle, &info, nullptr, &device);
+    vkGetDeviceQueue(device, family.index, 0, &queue);
   }
 };
 
-int main() {
+Adapter find_adapter(Instance instance, VkSurfaceKHR surface) {
+  constexpr auto score = [](PhysicalDevice device) {
+    auto prop = device.properties();
+    return (prop.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 10 : 1);
+  };
+  constexpr auto compare_device = [](PhysicalDevice left, PhysicalDevice right) {
+    return score(left) > score(right);
+  };
+
+  auto devices = instance.devices();
+  std::sort(devices.begin(), devices.end(), compare_device);
+
+  for(auto device : devices) {
+    for (auto family : device.queue_families()) {
+      if(device.can_present(family, surface) && family.has_graphics()) {
+        std::cout 
+          << "Adapter[" 
+          << device.properties().deviceName 
+          << "]" << std::endl;
+      
+        return { device, family };
+      }
+    }
+  }
+
+  throw std::runtime_error("No suitable Adapter found");
+}
+
+struct VulkanState {
+  Instance instance;
+  Option<DebugLog> log;
+
+  VkSurfaceKHR surface;
+  VkDevice device;
+  VkQueue queue;
+
+  void init(bool validation_enabled, GLFWwindow* window) {
+    instance = create_instance(validation_enabled);
+
+    if(validation_enabled) {
+      log = DebugLog {instance.handle};
+    }
+
+    Error::check(glfwCreateWindowSurface(instance.handle, window, nullptr, &surface));
+  
+    find_adapter(instance, surface)
+      .request_device(device, queue);
+  }
+  void uninit(){
+    vkDestroyDevice(device, nullptr);
+
+    log.reset();
+    instance.uninit();
+  }
+};
+
+int vulkan_test() {
 #ifdef DEBUG 
   const bool VALIDATION_ENABLED = true;
 #else 
@@ -88,13 +148,11 @@ int main() {
     }
   );
 
-  if(!glfwVulkanSupported()) {
+  if (!glfwVulkanSupported()) {
     std::cerr << "Vulkan not supported" << std::endl;
   }
   else {
-    std::cout 
-      << "Vulkan "
-      << Instance::version() << std::endl;
+    std::cout << "Vulkan " << Instance::version() << std::endl;
   }
 
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -102,9 +160,9 @@ int main() {
   GLFWwindow* window = glfwCreateWindow(500, 500, "Hello Vulkan", nullptr, nullptr);
 
   VulkanState state;
-  state.init(VALIDATION_ENABLED);
+  state.init(VALIDATION_ENABLED, window);
 
-  while(!glfwWindowShouldClose(window)) {
+  while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
   }
 
@@ -113,5 +171,10 @@ int main() {
   glfwDestroyWindow(window);
   glfwTerminate();
 
+  return EXIT_SUCCESS;
+}
+
+int main() {
+  vulkan_test();
   return EXIT_SUCCESS;
 }

@@ -8,9 +8,6 @@ project(
   default_options: [
     'cpp_std=c++20',
     'default_library=static',
-
-    'warning_level=everything',
-    'werror=true'
   ]
 )
 
@@ -35,6 +32,7 @@ executable(
   ],
   dependencies: [
     dependency('vulkan'),
-    dependency('glfw3')
+    dependency('glfw3'),
+    dependency('fmt')
   ]
 )
