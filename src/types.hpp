@@ -18,5 +18,5 @@ using f64 = double;
 template<typename T> 
 using Option = std::optional<T>;
 
-#include <ranges>
 #include <functional>
+#include <algorithm>

@@ -5,6 +5,8 @@
 #include "types.hpp"
 #include "common.hpp"
 
+
+
 class NameSet {
   std::vector<const char*> m_data;
 
@@ -45,7 +47,7 @@ public:
   }
 
   template<typename Property, typename Fn>
-  bool impl_supported(const std::vector<Property>& available, Fn get_name) {
+  bool impl_supported(const std::vector<Property>& available, Fn get_name) const {
     bool any_missing = false;
     for (auto name : m_data) {
       bool found = false;
@@ -66,14 +68,14 @@ public:
     return !any_missing;
   }
 
-  bool supported(const std::vector<VkLayerProperties>& available) {
+  bool supported(const std::vector<VkLayerProperties>& available) const {
     std::cout << "Checking Layer Support" << std::endl;
     bool any_missing = false;
     return impl_supported<VkLayerProperties>(available, 
       [](auto layer) { return layer.layerName; }
     );
   }
-  bool supported(const std::vector<VkExtensionProperties>& available) {
+  bool supported(const std::vector<VkExtensionProperties>& available) const {
     std::cout << "Checking Extension Support" << std::endl;
     return impl_supported<VkExtensionProperties>(available, 
       [](auto extension) { return extension.extensionName; }

@@ -15,19 +15,102 @@ namespace GLFW {
     const char** ext = glfwGetRequiredInstanceExtensions(&count);
     return { ext, ext + count };
   }
+
+  Surface create_surface(const Instance& instance, GLFWwindow* window) {
+    Surface::Handle handle;
+    glfwCreateWindowSurface(instance.handle, window, nullptr, &handle);
+    return Surface { handle, instance.handle };
+  }
 }
+
+
+struct Adapter {
+  PhysicalDevice physical_device;
+  QueueFamily family;
+  NameSet extensions;
+
+  static Adapter from(const Instance& instance, const Surface& surface) {
+    constexpr auto score = [](PhysicalDevice device) {
+      auto prop = device.properties();
+      return (prop.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 10 : 1);
+    };
+    constexpr auto compare_device = [](PhysicalDevice left, PhysicalDevice right) {
+      return score(left) > score(right);
+    };
+
+    auto devices = instance.devices();
+    std::sort(devices.begin(), devices.end(), compare_device);
+
+    NameSet extensions = {
+      VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    };
+
+    std::cout << "Looking for Adapter" << std::endl;
+    for (auto device : devices) {
+      std::cout 
+        << "Adapter[" 
+        << device.properties().deviceName
+        << "]" << std::endl;
+
+      if(!extensions.supported(device.extensions())) continue;
+
+      for(auto family : device.queue_families()) {
+        if(device.can_present(family, surface) && family.has_graphics()) {    
+          std::cout << "" << std::endl;
+
+          return Adapter {
+            .physical_device = device,
+            .family = family,
+            .extensions = extensions,
+          };
+        }
+      }
+
+      std::cout << "Rejected" << std::endl;
+    }
+
+    throw std::runtime_error("No suitable Adapter found");
+  }
+
+  std::pair<Device, Queue> request_device() {
+    f32 priority = 1.0f;
+    VkDeviceQueueCreateInfo queue_info {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+      .queueFamilyIndex = family.index,
+      .queueCount = 1,
+      .pQueuePriorities = &priority,
+    };
+
+    VkDeviceCreateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+      .queueCreateInfoCount = 1,
+      .pQueueCreateInfos = &queue_info,
+      .enabledExtensionCount = extensions.count(),
+      .ppEnabledExtensionNames = extensions.names()
+    };
+
+    auto device = physical_device.create_device(info);
+    auto queue = device.get_queue(family.index, 0);
+
+    return { std::move(device), queue };
+  }
+};
+
+
 
 Instance create_instance(bool validation_enabled) {
   NameSet layers = {};
   NameSet extensions = GLFW::extensions();
 
-  if (validation_enabled) {
+  if(validation_enabled) {
     layers.add("VK_LAYER_KHRONOS_validation");
     extensions.add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
   }
 
-  layers.supported(Instance::layers());
-  extensions.supported(Instance::extensions());
+  if(!layers.supported(Instance::layers())
+  || !extensions.supported(Instance::extensions())) {
+    throw std::runtime_error("Cannot create instance");
+  }
 
   VkApplicationInfo app_info {
     .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -45,87 +128,82 @@ Instance create_instance(bool validation_enabled) {
     .enabledExtensionCount = extensions.count(),
     .ppEnabledExtensionNames = extensions.names()
   };
-  Instance out;
-  out.init(info);
-  return out;
+  return Instance { info };
 }
 
-struct Adapter {
-  PhysicalDevice physical_device;
-  QueueFamily family;
+VkExtent2D swapchain_size(const VkSurfaceCapabilitiesKHR capabilities) {
+  auto current_extent = capabilities.currentExtent;
+  u32 special_dim = std::numeric_limits<u32>::max();
 
-  void request_device(VkDevice& device, VkQueue& queue) {
-    f32 priority = 1.0f;
-    VkDeviceQueueCreateInfo queue_info {
-      .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-      .queueFamilyIndex = family.index,
-      .queueCount = 1,
-      .pQueuePriorities = &priority,
-    };
-
-    VkDeviceCreateInfo info = {
-      .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-      .queueCreateInfoCount = 1,
-      .pQueueCreateInfos = &queue_info,
-    };
-    vkCreateDevice(physical_device.handle, &info, nullptr, &device);
-    vkGetDeviceQueue(device, family.index, 0, &queue);
+  if (current_extent.width == special_dim 
+  && current_extent.height == special_dim) {
+    
   }
-};
+  return current_extent;
+}
 
-Adapter find_adapter(Instance instance, VkSurfaceKHR surface) {
-  constexpr auto score = [](PhysicalDevice device) {
-    auto prop = device.properties();
-    return (prop.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 10 : 1);
+VkSwapchainCreateInfoKHR swapchain_config(
+  const Surface&        surface, 
+  const PhysicalDevice& device
+) {
+  auto limits = surface.get_limits(device);
+
+  VkSwapchainCreateInfoKHR info {
+    .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+    .surface = surface.handle, 
+    .minImageCount = limits.minImageCount + 1,     
+
+    .presentMode = VK_PRESENT_MODE_FIFO_KHR
   };
-  constexpr auto compare_device = [](PhysicalDevice left, PhysicalDevice right) {
-    return score(left) > score(right);
-  };
 
-  auto devices = instance.devices();
-  std::sort(devices.begin(), devices.end(), compare_device);
-
-  for(auto device : devices) {
-    for (auto family : device.queue_families()) {
-      if(device.can_present(family, surface) && family.has_graphics()) {
-        std::cout 
-          << "Adapter[" 
-          << device.properties().deviceName 
-          << "]" << std::endl;
-      
-        return { device, family };
-      }
+  for(auto mode : surface.get_present_modes(device)) {
+    if(mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+      info.presentMode = mode;
+      break; 
     }
   }
 
-  throw std::runtime_error("No suitable Adapter found");
+  for(auto fmt : surface.get_formats(device)) {
+    if(fmt.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+    && fmt.format == VK_FORMAT_B8G8R8_SRGB) {
+      info.imageFormat = fmt.format;
+      info.imageColorSpace = fmt.colorSpace;
+      break;
+    }
+  }
+
+  return info;
 }
 
 struct VulkanState {
   Instance instance;
   Option<DebugLog> log;
+  Surface surface;
 
-  VkSurfaceKHR surface;
-  VkDevice device;
-  VkQueue queue;
+  Device device;
+  Queue queue;
 
-  void init(bool validation_enabled, GLFWwindow* window) {
-    instance = create_instance(validation_enabled);
+  static VulkanState make(bool validation_enabled, GLFWwindow* window) {
+    Instance instance = create_instance(validation_enabled);
 
-    if(validation_enabled) {
-      log = DebugLog {instance.handle};
-    }
+    Option<DebugLog> log;
+    if (validation_enabled) 
+      log = std::move(DebugLog { instance.handle, validation_enabled });
+    Surface surface = GLFW::create_surface(instance, window);
 
-    Error::check(glfwCreateWindowSurface(instance.handle, window, nullptr, &surface));
-  
-    find_adapter(instance, surface)
-      .request_device(device, queue);
-  }
-  void uninit(){
-    vkDestroyDevice(device, nullptr);
+    auto adapter = Adapter::from(instance, surface);
+    auto [device, queue] = adapter.request_device();
+    
+    auto config = swapchain_config(surface, adapter.physical_device);
+    //surface.setup_swapchain(device, config);
 
-    log.reset();
-    instance.uninit();
+    return VulkanState {
+      .instance = std::move(instance),
+      .log = std::move(log),
+      .surface = std::move(surface),
+      .device = std::move(device),
+      .queue = std::move(queue)
+    };
   }
 };
 
@@ -148,7 +226,7 @@ int vulkan_test() {
     }
   );
 
-  if (!glfwVulkanSupported()) {
+  if(!glfwVulkanSupported()) {
     std::cerr << "Vulkan not supported" << std::endl;
   }
   else {
@@ -159,14 +237,13 @@ int vulkan_test() {
   glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
   GLFWwindow* window = glfwCreateWindow(500, 500, "Hello Vulkan", nullptr, nullptr);
 
-  VulkanState state;
-  state.init(VALIDATION_ENABLED, window);
+  {
+    auto state = VulkanState::make(VALIDATION_ENABLED, window);
 
-  while (!glfwWindowShouldClose(window)) {
-    glfwPollEvents();
+    while (!glfwWindowShouldClose(window)) {
+      glfwPollEvents();
+    }
   }
-
-  state.uninit();
 
   glfwDestroyWindow(window);
   glfwTerminate();

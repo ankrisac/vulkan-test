@@ -32,7 +32,6 @@ executable(
   ],
   dependencies: [
     dependency('vulkan'),
-    dependency('glfw3'),
-    dependency('fmt')
+    dependency('glfw3')
   ]
 )

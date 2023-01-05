@@ -17,7 +17,7 @@ struct Error : std::exception {
   }
 
   static void check(VkResult res) {
-    if (res != VK_SUCCESS) {
+    if(res != VK_SUCCESS) {
       std::cerr << "Vulkan Error : " << string_VkResult(res) << std::endl;
       throw Error(res);
     }
@@ -80,8 +80,9 @@ std::vector<U> map(const std::vector<T>& in, Fn fn) {
 }
 
 struct DebugLog {
-  VkInstance parent = nullptr;
-  VkDebugUtilsMessengerEXT handle = nullptr;
+  VkInstance parent;
+  VkDebugUtilsMessengerEXT handle;
+  bool validation_enabled;
 
   static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity, 
@@ -108,19 +109,20 @@ struct DebugLog {
     .pfnUserCallback = &debug_callback
   };
 
-  DebugLog(VkInstance parent);
+  DebugLog(VkInstance, bool);
   ~DebugLog();
 
-  DebugLog(DebugLog&& other);
-  DebugLog& operator=(DebugLog&& other) = default;
-
-  DebugLog(const DebugLog&) = delete;
-  DebugLog& operator=(const DebugLog&) = delete;
+  DebugLog(DebugLog&&);
+  DebugLog& operator=(DebugLog&&) = default;
 };
 
 struct PhysicalDevice;
 struct QueueFamily;
+
 struct Device;
+struct Queue;
+
+struct Surface;
 
 struct Instance {
   using Handle = VkInstance;
@@ -128,18 +130,26 @@ struct Instance {
 
   Handle handle;
 
-  void init(const CreateInfo& info) {
+  Instance(CreateInfo info) {
     Error::check(vkCreateInstance(&info, nullptr, &handle));
   }
-  void uninit() {
+  ~Instance() {
     vkDestroyInstance(handle, nullptr);
   }
+
+  // Move only - cannot be copied
+  Instance(Instance&& other) {
+    handle = other.handle;
+    other.handle = VK_NULL_HANDLE;
+  }  
+  Instance& operator=(Instance&&) = default;
+
 
   static Version version();
   static std::vector<VkLayerProperties> layers();
   static std::vector<VkExtensionProperties> extensions(const char* layer = nullptr);
 
-  std::vector<PhysicalDevice> devices();
+  std::vector<PhysicalDevice> devices() const;
 };
 
 struct PhysicalDevice {
@@ -151,10 +161,11 @@ struct PhysicalDevice {
 
   Features features();
   Properties properties();
-  bool can_present(const QueueFamily& family, VkSurfaceKHR surface);
 
-  std::vector<VkExtensionProperties> extensions(const char* layer_name);
+  std::vector<VkExtensionProperties> extensions(const char* layer_name = nullptr);
   std::vector<QueueFamily> queue_families();
+
+  bool can_present(const QueueFamily& family, const Surface& surface);
 
   Device create_device(VkDeviceCreateInfo& info);
 };
@@ -180,4 +191,58 @@ struct QueueFamily {
 struct Device {
   using Handle = VkDevice;
   Handle handle;
+
+  Device(Handle handle);
+  ~Device();
+
+  Device(Device&& other);
+  Device& operator=(Device&& other) = default;
+ 
+  Queue get_queue(QueueFamily::Index family, u32 index) const;
+};
+
+struct Queue {
+  using Handle = VkQueue;
+  Handle handle;
+};
+
+struct Surface {
+  using Handle = VkSurfaceKHR;
+  Handle handle;
+  VkInstance instance;
+
+  Surface(Handle handle, VkInstance instance);
+  ~Surface();
+
+  Surface(Surface&& other);
+  Surface& operator=(Surface&& other) = default;
+
+  using Limits = VkSurfaceCapabilitiesKHR;
+  using Format = VkSurfaceFormatKHR;
+  using PresentMode = VkPresentModeKHR;
+
+  Limits get_limits(const PhysicalDevice& device) const;
+  std::vector<Format> get_formats(const PhysicalDevice& device) const;
+  std::vector<PresentMode> get_present_modes(const PhysicalDevice& device) const;
+
+  bool compatible_with(const PhysicalDevice& device);
+  void setup_swapchain(VkDevice device, VkSwapchainCreateInfoKHR config);
+};
+
+struct Swapchain {
+  using Handle = VkSwapchainKHR;
+  using CreateInfo = VkSwapchainCreateInfoKHR;
+
+  struct Config {
+    VkSurfaceFormatKHR format;
+    VkPresentModeKHR present_mode;
+    VkExtent2D size;
+  };
+
+  Handle handle;
+  const Device& device;
+
+  ~Swapchain() { 
+    vkDestroySwapchainKHR(device.handle, handle, nullptr); 
+  } 
 };
